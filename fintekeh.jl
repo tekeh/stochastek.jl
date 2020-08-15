@@ -6,18 +6,14 @@ using ForwardDiff
 
 struct BrownianModel
 end
-
 struct CauchyModel
 end
-
 struct GeometricModel
 end
 
-function generate_trajectory(x0, drift, diffusion, tf, no_samples, model::BrownianModel)
+
+function generate_trajectory(x0, model::BrownianModel, drift, diffusion, tf, no_samples)
 	# Generates drift-diffusion trajectory
-	# x0 is a (1,dim) array of initial values
-	# drift is a (1,dim) vector of drift terms
-	# diffusion is a constant (for now)
 	dim = length(x0)
 	dt = tf/no_samples
 	rand_vals=  randn(no_samples, dim)
@@ -27,7 +23,7 @@ function generate_trajectory(x0, drift, diffusion, tf, no_samples, model::Browni
 
 end
 
-function generate_trajectory(x0, loc, scale, tf, no_samples, model::CauchyModel)
+function generate_trajectory(x0, model::CauchyMode, loc, scale, tf, no_samples)
 	## Generates discontinuous levy flights with step size chosen from
 	# Cauchy distribution
 	dim = length(x0)
@@ -38,7 +34,7 @@ function generate_trajectory(x0, loc, scale, tf, no_samples, model::CauchyModel)
 	x = x0 .+ cumsum(rand_vals, dims=1)
 end
 
-function generate_trajectory(x0, p_drift, vol, tf, no_samples, model::GeometricModel)
+function generate_trajectory(x0, model::GeometricModel, p_drift, vol, tf, no_samples)
 	# Generates geomtric brownian motion
 	# using analytic form rather than direct simulation
 	# S_t = S_0 exp( (μ - σ^2/2)*t  σ W_t) 
@@ -58,19 +54,7 @@ function infer(xt, model, dt=1, hessian::Bool=false)
 		hess = ForwardDiff.hessian(p -> mlogp(xt, p, dt, model), sol.minimizer)
 		return sol, hess
 	end
-
-	## Fischer information Matrix (for error estimates)
 end
-
-##function infer_cauchy(xt, dt=1, hessian::Bool=false)
-#
-#	sol = optimize(p -> mlogp_cauchy(xt, p, dt),[-Inf,0], [Inf,Inf], [1.,1.], Fminbox( LBFGS() ); autodiff = :forward )
-#	if hessian == true
-#		hess = ForwardDiff.hessian(p -> mlogp_cauchy(xt, p, dt), sol.minimizer)
-#		return sol, hess
-#	end
-#end
-
 
 function mlogp(xt, p, dt, model::CauchyModel)
 	# Calculates log posterior given a drift diffusion model
@@ -103,9 +87,8 @@ function isamp_evidence(xt, model, p_inf, inf_hess=I, points = 1000)
 	## Calculate Bayesian model evidence 
 	## p(x_t| M) = ∫ p(x| θ, M) p(θ | M) dθ
 	## Assume flat prior on the parameters of the model for now
-	## Calculated using MCMC
+	## Calculated using importance sampling
 	
-	# Importance sampling: Generate random values
 	dim = size(p_inf)[1]
 	invsig = 0.5 *( transpose(inf_hess) + inf_hess)
 	dist = MvNormal(p_inf, inv(invsig) )
@@ -121,29 +104,6 @@ function isamp_evidence(xt, model, p_inf, inf_hess=I, points = 1000)
 	evidence /= points
 	return evidence#, rvals
 end
-
-#function isamp_evidence_cauchy(xt, p_inf,inf_hess=I,  points = 1000)
-#	## Calculate Bayesian model evidence 
-#	## p(x_t| M) = ∫ p(x| θ, M) p(θ | M) dθ
-#	## Assume flat prior on the parameters of the model for now
-#	## Calculated using MCMC
-#	
-#	# Importance sampling: Generate random values
-#	dim = size(p_inf)[1]
-#	sig = 0.5 *( transpose(inf_hess) + inf_hess)
-#	dist = MvNormal(p_inf, sig)
-#	rvals = rand(dist, points)
-#	
-#	evidence = 0
-#	for i=1:points
-#		r = rvals[:,i]
-#		r[2] = abs(r[2]) ## no neg diffusio/scalen
-#		evidence += exp.(-mlogp_cauchy(xt, r, dt))/pdf(dist, r)
-#		#println(evidence)
-#	end
-#	evidence /= points
-#	return evidence#, rvals
-#end
 
 	
 function time_correlator(xt)
@@ -164,9 +124,9 @@ no_samples = 100
 dt = tf/no_samples
 
 
-xc=generate_trajectory(x0, loc, scale, tf, no_samples, CauchyModel())
-xt=generate_trajectory(x0, drift, diff, tf, no_samples, BrownianModel())
-xg=generate_trajectory(x0, drift, diff, tf, no_samples, GeometricModel())
+xc=generate_trajectory(x0, CauchyMode(), loc, scale, tf, no_samples)
+xt=generate_trajectory(x0, BrownianModel(), drift, diff, tf, no_samples)
+xg=generate_trajectory(x0, GeometricModel(), drift, diff, tf, no_samples)
 data = xc
 
 sol_b, hess_b = infer(data, BrownianModel(), dt, true)
