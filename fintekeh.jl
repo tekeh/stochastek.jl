@@ -13,11 +13,14 @@ end
 struct OUModel
 end
 
+## defined constants
 eps = 1e-4
+
 ################ STOCHASTIC TRAJECTORY SIMULATION ################
-function generate_trajectory(x0, model::BrownianModel, drift, diffusion, tf, no_samples)
+function generate_trajectory(x0, model::BrownianModel, params::Array{Float64, 1}, tf, no_samples)
 	# Generates drift-diffusion trajectory
 	dim = length(x0)
+	drift, diffusion = params
 	dt = tf/no_samples
 	rand_vals=  randn(no_samples, dim)
 	times = dt*[i for i=1:no_samples, j=1:dim] 
@@ -26,10 +29,11 @@ function generate_trajectory(x0, model::BrownianModel, drift, diffusion, tf, no_
 
 end
 
-function generate_trajectory(x0, model::CauchyModel, loc, scale, tf, no_samples)
+function generate_trajectory(x0, model::CauchyModel, params::Array{Float64, 1}, tf, no_samples)
 	## Generates discontinuous levy flights with step size chosen from
 	# Cauchy distribution
 	dim = length(x0)
+	loc, scale = params
 	times = dt* [ i for i=1:no_samples, j=1:dim]
 
 	dist = Cauchy(loc, scale* dt)
@@ -37,23 +41,25 @@ function generate_trajectory(x0, model::CauchyModel, loc, scale, tf, no_samples)
 	x = x0 .+ cumsum(rand_vals, dims=1)
 end
 
-function generate_trajectory(x0, model::GeometricModel, p_drift, vol, tf, no_samples)
+function generate_trajectory(x0, model::GeometricModel, params::Array{Float64, 1}, tf, no_samples)
 	# Generates geomtric brownian motion
 	# using analytic form rather than direct simulation
 	# S_t = S_0 exp( (μ - σ^2/2)*t  σ W_t) 
 	dim = length(x0)
+	p_drift, p_vol = params
 	dt = tf/no_samples
 	rand_vals=  randn(no_samples, dim)
 	times = dt*[i for i=1:no_samples, j=1:dim] 
-	x = x0 * transpose(exp.( (p_drift - vol^2/2)*times + vol *cumsum(rand_vals, dims=1)))
-	return reshape(x, (100,1))
+	x = x0 * transpose(exp.( (p_drift - p_vol^2/2)*times + p_vol *cumsum(rand_vals, dims=1)))
+	return reshape(x, (no_samples,1))
 end
 
-function generate_trajectory(x0, model::OUModel, drift, diffusion, tf, no_samples)
+function generate_trajectory(x0, model::OUModel, params::Array{Float64, 1}, tf, no_samples)
 	# Generates  OU (mean reverting) process trajectory
 	dim = length(x0)
+	drift, diffusion = params
 	dt = tf/no_samples
-	rand_vals=  randn(no_samples, dim)
+	rand_vals = randn(no_samples, dim)
 	xt = Array{Float64,2}(undef, no_samples, dim)
 	xt[1,:] = x0
 	
@@ -126,6 +132,22 @@ end
 
 ############## INFERENCE AND EVIDENCE #########################
 #
+#
+function forecast(xt, model, dt, n_obs, Δ_future, n_traj=100)
+	# produces a stochastic forecast of the data, according to selected model
+	# from n_obs to n_obs + Δ_future
+	sol, hess = infer(xt, model, dt, true)
+	x0 = xt[end]
+
+	no_points = floor(Δ_future/dt)
+	x_pred = Array{Float64, 2}(undef, n_traj, no_points)
+	for i=1:n_traj
+		x_pred[i,:] = generate_trajectory(x0, model, sol.minimizer, Δ_future, no_points)
+	end
+	return x_pred
+end
+
+
 function infer(xt, model, dt=1, hessian::Bool=false)
 	# Bayesian parameter inference on drift and diffusion parameters
 	## Max A Posterior (MAP) estimate
@@ -184,10 +206,10 @@ no_samples = 100
 dt = tf/no_samples
 
 
-xc=generate_trajectory(x0, CauchyModel(), loc, scale, tf, no_samples)
-xb=generate_trajectory(x0, BrownianModel(), drift, diff, tf, no_samples)
-xg=generate_trajectory(x0, GeometricModel(), p_drift, p_vol, tf, no_samples)
-xo=generate_trajectory(x0, OUModel(), drift, diff, tf, no_samples)
+xc=generate_trajectory(x0, CauchyModel(), [loc, scale], tf, no_samples)
+xb=generate_trajectory(x0, BrownianModel(), [drift, diff], tf, no_samples)
+xg=generate_trajectory(x0, GeometricModel(), [p_drift, p_vol], tf, no_samples)
+xo=generate_trajectory(x0, OUModel(), [drift, diff], tf, no_samples)
 data = xg
 
 sol_b, hess_b = infer(data, BrownianModel(), dt, true)
