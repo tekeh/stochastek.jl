@@ -5,19 +5,38 @@ using Distributions
 using ForwardDiff
 
 struct BrownianModel
+	string::String
+	params_lower::Array{Float64, 1}
+	params_upper::Array{Float64, 1}
 end
+	BrownianModel() = BrownianModel("BROWNIAN", [-Inf, eps], [Inf, Inf])
+
 struct CauchyModel
+	string::String
+	params_lower::Array{Float64, 1}
+	params_upper::Array{Float64, 1}
 end
+	CauchyModel() = CauchyModel("CAUCHY", [-Inf, eps], [Inf, Inf])
+
 struct GeometricModel
+	string::String
+	params_lower::Array{Float64, 1}
+	params_upper::Array{Float64, 1}
 end
+	GeometricModel() = GeometricModel("GEOMETRIC", [-Inf, eps], [Inf, Inf])
+
 struct OUModel
+	string::String
+	params_lower::Array{Float64, 1}
+	params_upper::Array{Float64, 1}
 end
+	OUModel() = OUModel("OU", [eps, eps], [Inf, Inf])
 
 ## defined constants
 eps = 1e-4
 
 ################ STOCHASTIC TRAJECTORY SIMULATION ################
-function generate_trajectory(x0, model::BrownianModel, params::Array{Float64, 1}, tf, no_samples)
+function generate_trajectory(x0, model::BrownianModel, params, tf, no_samples)
 	# Generates drift-diffusion trajectory
 	dim = length(x0)
 	drift, diffusion = params
@@ -29,7 +48,7 @@ function generate_trajectory(x0, model::BrownianModel, params::Array{Float64, 1}
 
 end
 
-function generate_trajectory(x0, model::CauchyModel, params::Array{Float64, 1}, tf, no_samples)
+function generate_trajectory(x0, model::CauchyModel, params, tf, no_samples)
 	## Generates discontinuous levy flights with step size chosen from
 	# Cauchy distribution
 	dim = length(x0)
@@ -41,7 +60,7 @@ function generate_trajectory(x0, model::CauchyModel, params::Array{Float64, 1}, 
 	x = x0 .+ cumsum(rand_vals, dims=1)
 end
 
-function generate_trajectory(x0, model::GeometricModel, params::Array{Float64, 1}, tf, no_samples)
+function generate_trajectory(x0, model::GeometricModel, params, tf, no_samples)
 	# Generates geomtric brownian motion
 	# using analytic form rather than direct simulation
 	# S_t = S_0 exp( (μ - σ^2/2)*t  σ W_t) 
@@ -54,7 +73,7 @@ function generate_trajectory(x0, model::GeometricModel, params::Array{Float64, 1
 	return reshape(x, (no_samples,1))
 end
 
-function generate_trajectory(x0, model::OUModel, params::Array{Float64, 1}, tf, no_samples)
+function generate_trajectory(x0, model::OUModel, params, tf, no_samples)
 	# Generates  OU (mean reverting) process trajectory
 	dim = length(x0)
 	drift, diffusion = params
@@ -69,7 +88,6 @@ function generate_trajectory(x0, model::OUModel, params::Array{Float64, 1}, tf, 
 		xt[i+1] = xt[i] + dx
 	end
 	return xt
-
 end
 
 ######### LOG P FUNCTIONS ###########################
@@ -147,11 +165,10 @@ function forecast(xt, model, dt, n_obs, Δ_future, n_traj=100)
 	return x_pred
 end
 
-
 function infer(xt, model, dt=1, hessian::Bool=false)
 	# Bayesian parameter inference on drift and diffusion parameters
 	## Max A Posterior (MAP) estimate
-	sol = optimize(p -> mlogp(xt, p, dt, model),[eps,eps], [Inf,Inf], [1.,1.], Fminbox( LBFGS() ); autodiff = :forward ) ## note: seems to predict 2*diff ??
+	sol = optimize(p -> mlogp(xt, p, dt, model), model.params_lower, model.params_upper, [1.,1.], Fminbox( LBFGS() ); autodiff = :forward ) ## note: seems to predict 2*diff ??
 	if hessian == true
 		hess = ForwardDiff.hessian(p -> mlogp(xt, p, dt, model), sol.minimizer)
 		return sol, hess
@@ -249,7 +266,7 @@ end
 sol_o, hess_o = infer(data, OUModel(), dt, true)
 try
 	bars_o = sqrt.(diag(inv(hess_o)))
-	println("OU:\tp_drift is $(sol_o.minimizer[1]) +/- $(bars_o[1]) and p_vol is $(sol_o.minimizer[2]) +/- $(bars_o[2])") 
+	println("OU:\tdrift is $(sol_o.minimizer[1]) +/- $(bars_o[1]) and diff is $(sol_o.minimizer[2]) +/- $(bars_o[2])") 
 catch e
 	println("OU curvature @ MAP estimate is very flat or negative...")
 	global hess_o = I
@@ -262,5 +279,5 @@ end
 eb = isamp_evidence(data, BrownianModel(), 	sol_b.minimizer, hess_b)
 ec = isamp_evidence(data, CauchyModel(), 	sol_c.minimizer, hess_c)
 eg = isamp_evidence(data, GeometricModel(), 	sol_g.minimizer, hess_g)
-eo = isamp_evidence(data, OUModel(), 	sol_o.minimizer, hess_o)
+eo = isamp_evidence(data, OUModel(), 		sol_o.minimizer, hess_o)
 print("EVIDENCE VALUES \n\nBROWNIAN:\t $(eb) \nCAUCHY:\t  $(ec)\nGEOMETRIC:\t $(eg) \nOU:\t $(eo)")
