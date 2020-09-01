@@ -33,9 +33,17 @@ struct OUModel
 end
 	OUModel() = OUModel("OU", 2, [eps, eps], [Inf, Inf])
 
+struct ARModel
+	string::String
+	param_no::Int64
+	params_lower::Array{Float64, 1}
+	params_upper::Array{Float64, 1}
+end
+	ARModel(p) = ARModel("AR", p, repeat([-Inf], p), repeat([Inf], p) )
 ## defined constants
 
 ################ STOCHASTIC TRAJECTORY SIMULATION ################
+
 function generate_trajectory(x0, model::BrownianModel, params, tf, no_samples)
 	# Generates drift-diffusion trajectory
 	dim = length(x0)
@@ -87,6 +95,26 @@ function generate_trajectory(x0, model::OUModel, params, tf, no_samples)
 	for i in 1:no_samples-1
 		dx = - drift * dt * xt[i] + sqrt(diffusion * dt) * rand_vals[i]
 		xt[i+1] = xt[i] + dx
+	end
+	return xt
+end
+
+function generate_trajectory(x0, model::ARModel, params, tf, no_samples)
+	# Generates trajectory according to an Autoregressive Model of order p
+	dim = length(x0)
+	rand_vals = randn(no_samples, dim)
+	xt = Array{Float64,2}(undef, no_samples, dim)
+	xt[1,:] = x0
+	p = model.param_no
+
+	#simulate, due to lack of exact sol
+	past_vals = repeat([0], p, dim)
+	for i in 1:no_samples-1
+		dx = transpose(params)*past_vals .+ rand_vals[i,:]
+		typeof(dx)
+		xt[i+1] = xt[i] .+ dx
+		push!(past_vals, xt[i+1])
+		popfirst!(past_vals)
 	end
 	return xt
 end
