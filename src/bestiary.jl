@@ -93,7 +93,7 @@ function generate_trajectory(x0, model::OUModel, params, tf, no_samples)
 	
 	## simulate, due to lack of exact sol
 	for i in 1:no_samples-1
-		dx = - drift * dt * xt[i] + sqrt(diffusion * dt) * rand_vals[i]
+		dx = - drift * dt * xt[i] + sqrt(diffusion * dt) * rand_vals[i] ##NOTE: change to [i,:]
 		xt[i+1] = xt[i] + dx
 	end
 	return xt
@@ -108,13 +108,13 @@ function generate_trajectory(x0, model::ARModel, params, tf, no_samples)
 	p = model.param_no
 
 	#simulate, due to lack of exact sol
-	past_vals = repeat([0], p, dim)
+	past_vals = zeros(p, dim)
 	for i in 1:no_samples-1
 		dx = transpose(params)*past_vals .+ rand_vals[i,:]
-		typeof(dx)
-		xt[i+1] = xt[i] .+ dx
-		push!(past_vals, xt[i+1])
-		popfirst!(past_vals)
+		xt[i+1,:] =  dx
+		past_vals = [past_vals[2:end,:]; xt[i+1,:]]
+		#push!(past_vals, xt[i+1,:])
+		#popfirst!(past_vals)
 	end
 	return xt
 end
@@ -130,6 +130,24 @@ function mlogp(xt, p, dt, model::BrownianModel)
 	dx = [ xt[i+1] - (xt[i] .+ p[1] * dt) for i=1:dim]
 
 	logp = - 0.5* transpose(dx) * invD * dx
+	logp += - 0.5 * logdet(D) - (dim/2) * log(2*π) ## exp to force positivity in smooth way
+	return -logp
+end
+
+
+function mlogp(xt, p, dt, model::ARModel)
+	# Calculates log posterior given a drift diffusion model
+	# p = (drift, diffusion)
+	dim = size(xt)[1]-1
+	D =  Matrix{Float64}(I, dim, dim)
+	invD = inv(D)
+	p = model.param_no
+	past_vals = zeros(p, dim)
+	for i in 1:dim
+		dx = xt[i+1,:] - transpose(params)*past_vals 
+		logp = - 0.5* transpose(dx) * invD * dx
+		past_vals = [past_vals[2:end,:]; xt[i+1,:]]
+	end
 	logp += - 0.5 * logdet(D) - (dim/2) * log(2*π) ## exp to force positivity in smooth way
 	return -logp
 end
