@@ -134,24 +134,6 @@ function mlogp(xt, p, dt, model::BrownianModel)
 	return -logp
 end
 
-
-function mlogp(xt, p, dt, model::ARModel)
-	# Calculates log posterior given a drift diffusion model
-	# p = (drift, diffusion)
-	dim = size(xt)[1]-1
-	D =  Matrix{Float64}(I, dim, dim)
-	invD = inv(D)
-	p = model.param_no
-	past_vals = zeros(p, dim)
-	for i in 1:dim
-		dx = xt[i+1,:] - transpose(params)*past_vals 
-		logp = - 0.5* transpose(dx) * invD * dx
-		past_vals = [past_vals[2:end,:]; xt[i+1,:]]
-	end
-	logp += - 0.5 * logdet(D) - (dim/2) * log(2*π) ## exp to force positivity in smooth way
-	return -logp
-end
-
 function mlogp(xt, p, dt, model::CauchyModel)
 	# Calculates log posterior given a drift diffusion model
 	# Appropriate normalization included
@@ -195,3 +177,19 @@ function mlogp(xt, p, dt, model::OUModel)
 	return -logp
 end
 
+function mlogp(xt, p, dt, model::ARModel)
+	# Calculates log posterior given a drift diffusion model
+	# p = (drift, diffusion)
+	dim = size(xt)[1]-1
+	D =  Matrix{Float64}(I, dim, dim)
+	invD = inv(D)
+	num_p = model.param_no
+	past_vals = zeros(num_p, dim)
+	for i in 1:dim
+		dx = xt[i+1,:] - transpose(p)*past_vals 
+		logp = - 0.5* transpose(dx) * invD * dx
+		past_vals = [past_vals[2:end,:]; xt[i+1,:]]
+	end
+	logp += - 0.5 * logdet(D) - (dim/2) * log(2*π) ## exp to force positivity in smooth way
+	return -logp
+end
