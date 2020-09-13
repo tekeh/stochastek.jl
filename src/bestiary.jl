@@ -1,4 +1,4 @@
-## Model Bestiary. Defines the Julia structs which are model initialisers. Such structures can be passed to other functions to control the behaviour of the method
+## Model Bestiary. Defines the Julia structs which are model initialisers. Such structures can be passed to functions to control the behaviour of the method
 
 eps = 1e-6
 struct BrownianModel
@@ -39,7 +39,8 @@ struct ARModel
 	params_lower::Array{Float64, 1}
 	params_upper::Array{Float64, 1}
 end
-	ARModel(p) = ARModel("AR", p, repeat([-Inf], p), repeat([Inf], p) )
+ARModel(p) = ARModel("AR$(p)", p, repeat([-Inf], p), repeat([Inf], p) )
+ARModel() = ARModel(2) ## Some default value. Arb
 ## defined constants
 
 ################ STOCHASTIC TRAJECTORY SIMULATION ################
@@ -107,10 +108,14 @@ function generate_trajectory(x0, model::ARModel, params, tf, no_samples)
 	xt[1,:] = x0
 	p = model.param_no
 
+	if size(params) != (1, p)
+		params = reshape(params, 1, p)
+	end
+
 	#simulate, due to lack of exact sol
 	past_vals = zeros(p, dim)
 	for i in 1:no_samples-1
-		dx = transpose(params)*past_vals .+ rand_vals[i,:]
+		dx = params*past_vals + rand_vals[i:i,:]
 		xt[i+1,:] =  dx
 		past_vals = [past_vals[2:end,:]; xt[i+1,:]]
 		#push!(past_vals, xt[i+1,:])
@@ -181,15 +186,23 @@ function mlogp(xt, p, dt, model::ARModel)
 	# Calculates log posterior given a drift diffusion model
 	# p = (drift, diffusion)
 	dim = size(xt)[1]-1
-	D =  Matrix{Float64}(I, dim, dim)
+	v_size = size(xt)[2]
+	D =  Matrix{Float64}(I, v_size, v_size)
 	invD = inv(D)
 	num_p = model.param_no
-	past_vals = zeros(num_p, dim)
-	for i in 1:dim
-		dx = xt[i+1,:] - transpose(p)*past_vals 
-		logp = - 0.5* transpose(dx) * invD * dx
-		past_vals = [past_vals[2:end,:]; xt[i+1,:]]
+	past_vals = zeros(num_p, v_size)
+
+	if size(p) != (1, num_p)
+		p = reshape(p, 1, num_p)
 	end
-	logp += - 0.5 * logdet(D) - (dim/2) * log(2*π) ## exp to force positivity in smooth way
+
+	logp = 0
+	for i in 1:dim
+		dx = xt[i+1:i+1,:] - p*past_vals ## force 2d
+		logp1 = - 0.5* dx * invD * transpose(dx)
+		logp += logp1[1] # to scalar 
+		past_vals = [past_vals[2:end,:]; xt[i+1:i+1,:]]
+	end
+	logp += - 0.5 * logdet(D) - (dim/2) * log(2*π) 
 	return -logp
 end

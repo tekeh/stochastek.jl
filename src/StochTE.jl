@@ -15,7 +15,8 @@ export forecast,
 	BrownianModel,
 	CauchyModel,
 	GeometricModel,
-	OUModel
+	OUModel,
+	ARModel
 
 include("bestiary.jl")
 
@@ -42,18 +43,20 @@ function infer(xt, model, dt=1, hessian::Bool=false)
 	if hessian == true
 		hess = ForwardDiff.hessian(p -> mlogp(xt, p, dt, model), sol.minimizer)
 		return sol, hess
+	else
+		return sol
 	end
 end
 	
 function rand_reject(model, dist, points)
 	## Sampling from a distribution with rejection if value 
 	## is outside of the bounds of the passed model.
-	## Equivalent to a multivariate tuncated dist
+	## Equivalent to a multivariate truncated dist
 	rvals = Array{Float64, 2}(undef, model.param_no, points)
 	i=1
 	while i < points+1
 		rval = rand(dist)
-		if model.params_lower < rval && model.params_upper > rval
+		if all(model.params_lower .< rval) && all(model.params_upper .> rval)
 			rvals[:,i] = rval
 			i +=1
 		end
@@ -76,12 +79,9 @@ function evidence(xt, model, p_inf, dt = 1, inf_hess=I, points = 1000)
 	evidence = 0
 	for i=1:points
 		r = rvals[:,i]
-		r[1] = abs(r[1]) ## note: this should be made more general to handle different ranges in models
-		r[2] = abs(r[2]) ## no neg diff/scale wlog
 		evidence += exp.(-mlogp(xt, r, dt, model))/pdf(dist, r)
-		#println(evidence)
 	end
 	evidence /= points
-	return evidence#, rvals
+	return evidence
 end
 end
