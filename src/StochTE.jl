@@ -84,4 +84,8 @@ function evidence(xt, model, p_inf, dt = 1, inf_hess=I, points = 1000)
 	evidence /= points
 	return evidence
 end
+
+function autocorrelation(xt)
+	dxt = diff(xt)
+end
 end
